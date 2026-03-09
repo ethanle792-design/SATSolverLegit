@@ -1,6 +1,7 @@
 import tarfile
 import time
 from engine import SATSolver
+from convert_to_POS import BooleanLogicParser
 
 def parse_cnf_content(content):
     clauses = []
@@ -51,4 +52,91 @@ def process_tar_benchmarks(tar_path):
     print(f"Total Time: {time.time() - start_time:.2f}s")
 
 if __name__ == "__main__":
-    process_tar_benchmarks("uf20-91.tar.gz")
+
+    # Assuming your SATSolver is in engine.py
+    # from engine import SATSolver 
+
+    parser = BooleanLogicParser()
+
+    # 1. Get POS clauses from your boolean string
+    # Input: "(x1 AND x2) OR (x3 AND x4)"
+    # Output: [['x1', 'x3'], ['x1', 'x4'], ['x2', 'x3'], ['x2', 'x4']]
+    my_string = "(~x1 OR x2) AND (x3 or ~x4) AND x1"
+    string_clauses = parser.to_pos(my_string)
+    print(f"Parsed String Clauses: {string_clauses}")
+
+    # 2. Map variable names (x1, x2...) to unique integers (1, 2...)
+    var_to_id = {}
+    id_to_var = {}
+    next_id = 1
+    int_clauses = []
+
+    for clause in string_clauses:
+        int_clause = []
+        for lit in clause:
+            is_neg = lit.startswith('~')
+            name = lit.lstrip('~')
+            
+            if name not in var_to_id:
+                var_to_id[name] = next_id
+                id_to_var[next_id] = name
+                next_id += 1
+            
+            var_id = var_to_id[name]
+            int_clause.append(-var_id if is_neg else var_id)
+        int_clauses.append(int_clause)
+
+    num_vars = len(var_to_id)
+
+    # 3. Set Assumptions using the 'x1' format
+    # Example: Force x1 to be True and x3 to be False
+    #my_string_assumptions = {"x1": -1}
+    my_string_assumptions = {}
+    
+    # Map these string names to their integer IDs for the solver
+    int_assumptions = {}
+    for name, val in my_string_assumptions.items():
+        if name in var_to_id:
+            int_assumptions[var_to_id[name]] = val
+
+    # 4. Initialize and Run the Solver
+    solver = SATSolver(num_vars, int_clauses, pre_assignments=int_assumptions)
+    result = solver.solve()
+
+    # 5. Output the results in the 'x1' format
+    print(f"\nResult with assumptions {my_string_assumptions}: {result}")
+    if result == "SATISFIABLE":
+        readable_assignment = {}
+        for i in range(1, num_vars + 1):
+            var_name = id_to_var[i]
+            val = solver.assignment[i]
+            readable_assignment[var_name] = "True" if val == 1 else "False"
+        
+        print(f"Mapped Solution: {readable_assignment}")
+
+
+
+
+
+
+
+
+
+
+ 
+    # # Example CNF Data
+    # num_vars = 10
+    # clauses = [[1, 2], [-1, 3], [4, 5]]
+
+    # # The new feature: forcing specific variables
+    # # Format: {variable_index: value} where value is 1 (True) or -1 (False)
+    # my_assumptions = {1: 1, 5: -1} 
+
+    # solver = SATSolver(num_vars, clauses, pre_assignments=my_assumptions)
+    # result = solver.solve()
+
+    # print(f"Result with assumptions {my_assumptions}: {result}")
+    # if result == "SATISFIABLE":
+    #     print(f"Full Assignment: {solver.assignment[1:]}")
+    # process_tar_benchmarks("uf20-91.tar.gz")
+    
