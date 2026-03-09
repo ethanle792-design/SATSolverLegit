@@ -52,6 +52,7 @@ def process_tar_benchmarks(tar_path):
     print(f"\nBENCHMARK COMPLETE\nTotal: {total_count} | SAT: {sat_count} | UNSAT: {unsat_count}")
     print(f"Total Time: {time.time() - start_time:.2f}s")
 
+
 if __name__ == "__main__":
 
     # Initialize components
@@ -62,15 +63,19 @@ if __name__ == "__main__":
     my_string = "(~x1 OR x2) AND (x3 or ~x4) AND x1"
     my_assumptions = {} # e.g., {"x2": -1} to force x2 False
 
-    # Solve
-    result, solution = logic_wrapper.solve_expression(my_string, my_assumptions)
+    # ── CHANGED: solve_all instead of solve_expression ──
+    all_solutions = logic_wrapper.solve_all(my_string, my_assumptions)
 
     # Output
     print(f"Expression: {my_string}")
     print(f"Assumptions: {my_assumptions}")
-    print(f"Status:      {result}")
-    
-    if result == "SATISFIABLE":
-        print(f"Solution:    {solution}")
+
+    if not all_solutions:
+        print("Status:      UNSAT — no satisfying assignment exists.")
+    else:
+        print(f"Status:      SATISFIABLE — {len(all_solutions)} combination(s) found.\n")
+        for idx, solution in enumerate(all_solutions, 1):
+            print(f"  [{idx}] {solution}")
+
     # process_tar_benchmarks("uf20-91.tar.gz")
     
