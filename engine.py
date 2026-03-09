@@ -1,7 +1,7 @@
 from heuristics import VSIDS
 
 class SATSolver:
-    def __init__(self, num_vars, clauses):
+    def __init__(self, num_vars, clauses, pre_assignments=None):
         self.num_vars = num_vars
         self.clauses = [list(c) for c in clauses]
         self.assignment = [0] * (num_vars + 1)
@@ -15,14 +15,24 @@ class SATSolver:
         self.vsids = VSIDS(num_vars)
         self.watches = {i: [] for i in range(-num_vars, num_vars + 1) if i != 0}
         
+        # 1. Setup Watches
         for i, clause in enumerate(self.clauses):
             if len(clause) >= 2:
                 self.watches[clause[0]].append(i)
                 self.watches[clause[1]].append(i)
             elif len(clause) == 1:
+                # Fixed unit clauses from the CNF
                 if not self.assign(clause[0], 0):
                     self.ok = False
 
+        # 2. Apply User Pre-assignments (Assumptions)
+        if pre_assignments:
+            for var, val in pre_assignments.items():
+                # val should be 1 for True, -1 for False
+                lit = var if val == 1 else -var
+                if not self.assign(lit, 0):
+                    self.ok = False
+                    
     def get_lit_val(self, lit):
         val = self.assignment[abs(lit)]
         if val == 0: return 0
