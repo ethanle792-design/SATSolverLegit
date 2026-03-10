@@ -2,20 +2,18 @@ class BooleanLogicParser:
     def __init__(self):
         self.keywords = ['AND', 'OR', 'NOT', 'XOR', 'NAND', 'NOR', 'XNOR']
 
-    # ─────────────────────────────────────────────────────────────
-    # STEP 1: Tokenizer
-    # ─────────────────────────────────────────────────────────────
+    # Take a string and turn it into a list of usable terms. 
     def input_to_arrayterms(self, input_string: str):
         terms = []
         i = 0
         while i < len(input_string):
             character = input_string[i]
-            if character == ' ':
+            if character == ' ': # skip space
                 i += 1
-            elif character in ['+', '(', ')', '~', '.']:
+            elif character in ['+', '(', ')', '~', '.']: # append operator symbols
                 terms.append(character)
                 i += 1
-            elif character.isalnum() or character == '_':
+            elif character.isalnum() or character == '_': # append variables and keywords
                 j = i
                 while j < len(input_string) and (input_string[j].isalnum() or input_string[j] == '_'):
                     j += 1
@@ -29,13 +27,11 @@ class BooleanLogicParser:
                 raise ValueError(f"Unexpected character '{character}' at position {i}")
         return terms
 
-    # ─────────────────────────────────────────────────────────────
-    # STEP 2: Token list → AST
-    # ─────────────────────────────────────────────────────────────
+    # Make the list of terms into an abstract tree similar to a binary tree, but use operators as nodes
     def parse(self, tokens):
-        """Turn a flat token list into a nested AST."""
-        pos = [0]   # use a list so inner functions can modify it
+        pos = [0]   
 
+    #Below are helper functions for recursive parsing to get the POS boolean form. 
         def peek():
             return tokens[pos[0]] if pos[0] < len(tokens) else None
 
@@ -65,13 +61,13 @@ class BooleanLogicParser:
                 consume()
                 child = parse_not()
                 return ('NOT', child)
-            return parse_atom()
+            return parse_var_or_group()
 
-        def parse_atom():
+        def parse_var_or_group():
             tok = peek()
             if tok == '(':
                 consume()           # '('
-                node = parse_expr()
+                node = parse_expression()
                 consume()           # ')'
                 return node
             elif tok == 'XOR':
@@ -82,7 +78,7 @@ class BooleanLogicParser:
             else:
                 raise SyntaxError(f"Unexpected token: {tok!r}")
 
-        def parse_expr():
+        def parse_expression():
             """Top level — also handles infix XOR/NAND/NOR/XNOR."""
             node = parse_and()
             while peek() in ('XOR', 'NAND', 'NOR', 'XNOR'):
@@ -102,22 +98,20 @@ class BooleanLogicParser:
                             ('AND', ('NOT', node), ('NOT', right)))
             return node
 
-        ast = parse_expr()
+        abstract_tree = parse_expression()
         if pos[0] != len(tokens):
             raise SyntaxError(f"Unexpected token at position {pos[0]}: {tokens[pos[0]]!r}")
-        return ast
+        return abstract_tree
 
-    # ─────────────────────────────────────────────────────────────
-    # STEP 3: Push NOTs inward
-    # ─────────────────────────────────────────────────────────────
-    def push_not_inward(self, ast):
-        kind = ast[0]
+    # Helper function to apply Demorgan's law into a group of variables. 
+    def push_not_inward(self, abstract_tree):
+        kind = abstract_tree[0]
         if kind == 'VAR':
-            return ast
+            return abstract_tree
         elif kind == 'NOT':
-            child = ast[1]
+            child = abstract_tree[1]
             if child[0] == 'VAR':
-                return ast
+                return abstract_tree
             elif child[0] == 'NOT':
                 return self.push_not_inward(child[1])
             elif child[0] == 'AND':
@@ -125,22 +119,20 @@ class BooleanLogicParser:
             elif child[0] == 'OR':
                 return self.push_not_inward(('AND', ('NOT', child[1]), ('NOT', child[2])))
         elif kind == 'AND':
-            return ('AND', self.push_not_inward(ast[1]), self.push_not_inward(ast[2]))
+            return ('AND', self.push_not_inward(abstract_tree[1]), self.push_not_inward(abstract_tree[2]))
         elif kind == 'OR':
-            return ('OR', self.push_not_inward(ast[1]), self.push_not_inward(ast[2]))
+            return ('OR', self.push_not_inward(abstract_tree[1]), self.push_not_inward(abstract_tree[2]))
 
-    # ─────────────────────────────────────────────────────────────
-    # STEP 4: Distribute ORs over ANDs
-    # ─────────────────────────────────────────────────────────────
-    def distribute(self, ast):
-        kind = ast[0]
+    # helper function to distribute OR over AND to get the final POS form.
+    def distribute(self, abstract_tree):
+        kind = abstract_tree[0]
         if kind in ('VAR', 'NOT'):
-            return ast
+            return abstract_tree
         elif kind == 'AND':
-            return ('AND', self.distribute(ast[1]), self.distribute(ast[2]))
+            return ('AND', self.distribute(abstract_tree[1]), self.distribute(abstract_tree[2]))
         elif kind == 'OR':
-            left  = self.distribute(ast[1])
-            right = self.distribute(ast[2])
+            left  = self.distribute(abstract_tree[1])
+            right = self.distribute(abstract_tree[2])
             if left[0] == 'AND':
                 return self.distribute(('AND', ('OR', left[1], right), ('OR', left[2], right)))
             elif right[0] == 'AND':
@@ -148,11 +140,9 @@ class BooleanLogicParser:
             else:
                 return ('OR', left, right)
 
-    # ─────────────────────────────────────────────────────────────
-    # STEP 5: AST → 2D clause array
-    # ─────────────────────────────────────────────────────────────
-    def ast_to_clauses(self, ast):
-        """Flatten a CNF AST into a 2D list of literals."""
+    # Change the abstract tree into a list for easy SAT finding.
+    def abstract_tree_to_clauses(self, abstract_tree):
+        """Flatten a CNF abstract_tree into a 2D list of literals."""
         clauses = []
 
         def collect_clause(node, current_clause):
@@ -164,28 +154,26 @@ class BooleanLogicParser:
                 collect_clause(node[1], current_clause)
                 collect_clause(node[2], current_clause)
 
-        def walk(node):
+        def split(node):
             if node[0] == 'AND':
-                walk(node[1])
-                walk(node[2])
+                split(node[1])
+                split(node[2])
             else:
                 clause = []
                 collect_clause(node, clause)
                 clauses.append(clause)
 
-        walk(ast)
+        split(abstract_tree)
         return clauses
 
-    # ─────────────────────────────────────────────────────────────
-    # MAIN Execution Logic
-    # ─────────────────────────────────────────────────────────────
+    # what to call to get the final POS form. 
     def to_pos(self, input_string: str, verbose=False):
         if verbose: print(f"\nProcessing: {input_string}")
         
         tokens = self.input_to_arrayterms(input_string)
-        ast = self.parse(tokens)
-        ast = self.push_not_inward(ast)
-        ast = self.distribute(ast)
-        clauses = self.ast_to_clauses(ast)
+        abstract_tree = self.parse(tokens)
+        abstract_tree = self.push_not_inward(abstract_tree)
+        abstract_tree = self.distribute(abstract_tree)
+        clauses = self.abstract_tree_to_clauses(abstract_tree)
         
         return clauses
